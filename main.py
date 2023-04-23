@@ -1,7 +1,5 @@
 import random
 import nltk
-import random
-import nltk
 from nltk.corpus import gutenberg
 import PySimpleGUI as sg
 
