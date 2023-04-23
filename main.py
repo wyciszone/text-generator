@@ -41,16 +41,21 @@ class Markov(object):
             seed = random.randint(0, self.word_size-3)
             seed_words = [self.words[seed], self.words[seed+1], self.words[seed+2]]
         else:
-            seed_words = seed_words.split()[-3:]
-        gen_words = []
-        w1, w2, w3 = seed_words
-        for i in range(size):
-            gen_words.append(w1)
+            seed_words = seed_words.split()
+            if len(seed_words) >= 3:
+                seed_words = seed_words[-3:]
+            elif len(seed_words) == 2:
+                seed_words.append(random.choice(self.words))
+            else:
+                seed_words = [seed_words[0], random.choice(self.words), random.choice(self.words)]
+        gen_words = seed_words.copy()
+        for i in range(size-3):
+            w1, w2, w3 = gen_words[-3:]
             try:
-                w1, w2, w3 = w2, w3, random.choice(self.cache[(w1, w2)])
+                next_word = random.choice(self.cache[(w1, w2)])
             except KeyError:
-                w1, w2, w3 = self.words[random.randint(0, self.word_size-3)], self.words[random.randint(0, self.word_size-2)], self.words[random.randint(0, self.word_size-1)]
-        gen_words.extend([w2, w3])
+                next_word = random.choice(self.words)
+            gen_words.append(next_word)
         return ' '.join(gen_words)
 
 # window layout
