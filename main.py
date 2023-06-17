@@ -2,122 +2,116 @@ import random
 import nltk
 from nltk.corpus import gutenberg
 import PySimpleGUI as sg
+import re
 
-authors = {'Austen': 'austen-emma.txt', 'Bible': 'bible-kjv.txt', 'Blake':'blake-poems.txt', 'Bryant':'bryant-stories.txt', 'Burgess':'burgess-busterbrown.txt', 'Carroll':'carroll-alice.txt', 'Chesterton':'chesterton-ball.txt', 'Melville':'melville-moby_dick.txt', 'Milton':'milton-paradise.txt', 'Shakespeare':'shakespeare-macbeth.txt'}
+corpus_authors = {
+    'austen-emma.txt': 'Jane Austen',
+    'bible-kjv.txt': 'The Bible',
+    'blake-poems.txt': 'William Blake',
+    'bryant-stories.txt': 'William Cullen Bryant',
+    'burgess-busterbrown.txt': 'Thornton W. Burgess',
+    'carroll-alice.txt': 'Lewis Carroll',
+    'chesterton-ball.txt': 'G.K. Chesterton',
+    'melville-moby_dick.txt': 'Herman Melville',
+    'milton-paradise.txt': 'John Milton',
+    'shakespeare-macbeth.txt': 'William Shakespeare'
+}
 
 class Markov(object):
-    
-    def __init__(self, open_file):
+    def __init__(self, words):
         self.cache = {}
-        self.open_file = open_file
-        self.words = self.file_to_words()
-        self.word_size = len(self.words)
+        self.words = words
+        self.word_size = len(words)
         self.database()
-        
-    
-    def file_to_words(self):
-        self.open_file.seek(0)
-        data = self.open_file.read()
-        words = data.replace("'", '').replace('"', '').split()
-        for word in words:
-            if word.isupper():
-                words.remove(word)
-        return words
-        
-    
-    def triples(self, use_four_words=False):
-        if len(self.words) < 3:
-            return
-        if use_four_words:
-            for i in range(len(self.words) - 3):
-                yield (self.words[i], self.words[i+1], self.words[i+2], self.words[i+3])
-        else:
-            for i in range(min(len(self.words) - 2, 35)):
-                yield (self.words[i], self.words[i+1], self.words[i+2])
-            for i in range(35, len(self.words) - 3):
-                yield (self.words[i], self.words[i+1], self.words[i+2], self.words[i+3])
-            
+
+    def tuples(self):
+        for i in range(len(self.words) - 3):
+            yield (self.words[i], self.words[i+1], self.words[i+2], self.words[i+3])
+
     def database(self):
-        for w1, w2, w3, w4 in self.triples(use_four_words=True):
+        for w1, w2, w3, w4 in self.tuples():
             key = (w1, w2, w3)
             if key in self.cache:
                 self.cache[key].append(w4)
             else:
                 self.cache[key] = [w4]
 
-    def generate_markov_text(self, beginning_words, size=random.randint(60,180), seed_words=None):
+    def generate_markov_text(self, size=100, seed_words=None):
         if seed_words is None:
             seed = random.randint(0, self.word_size-4)
             seed_words = [self.words[seed], self.words[seed+1], self.words[seed+2], self.words[seed+3]]
-        else:
-            seed_words = seed_words.split()
-            if len(seed_words) >= 4:
-                seed_words = seed_words[-4:]
-            elif len(seed_words) == 3:
-                seed_words.append(random.choice(self.words))
-            elif len(seed_words) == 2:
-                seed_words.extend(random.sample(self.words, 2))
-            else:
-                seed = random.randint(0, self.word_size-4)
-                seed_words = [self.words[seed], self.words[seed+1], self.words[seed+2], self.words[seed+3]]
-        gen_words = seed_words.copy()
-        use_four_words = False
-        for i in range(size-4):
-            if i >= 20 and not use_four_words:
-                self.cache = {}
-                self.database()
-                use_four_words = True
-            if use_four_words:
-                w1, w2, w3, w4 = gen_words[-4:]
-                try:
-                    next_word = random.choice(self.cache[(w1, w2, w3)])
-                except KeyError:
-                    next_word = random.choice(self.words)
-                gen_words.append(next_word)
-            else:
-                w1, w2, w3 = gen_words[-3:]
-                try:
-                    next_word = random.choice(self.cache[(w1, w2)])
-                except KeyError:
-                    next_word = random.choice(self.words)
-                gen_words.append(next_word)
-        beginning_words = beginning_words.split()
-        try:
-            for i in range(0,4):
-                beginning_words.pop()
-        except IndexError:
-            pass
-        my_text = beginning_words + gen_words
-        return ' '.join(my_text)
-        
+        gen_words = list(seed_words) if isinstance(seed_words, str) else seed_words.copy()
 
-# window layout
+        for i in range(size - 4):
+            w1, w2, w3, w4 = gen_words[-4:]
+            try:
+                next_word = random.choice(self.cache[(w1, w2, w3)])
+            except KeyError:
+                next_word = random.choice(self.words)
+            gen_words.append(next_word)
 
-sg.theme('DarkAmber')
+        return ' '.join(gen_words)
 
-layout = [  [sg.Text("Please choose an author:")],
-            [sg.Combo(list(authors.keys()), key='-AUTHORS-')],
-            [sg.Text('Input starting words:')],
-            [sg.Input(key='-SEED-')],
-            [sg.Button('Generate'), sg.Button('Cancel')] ]
+def format_generated_text(text):
+    text = text.replace('"', '').replace("'", "")
+    text = text.replace(" .", ".")
+    text = text.replace(",,", ",")
+    text = text.replace(" ,", ",")
+    text = text.replace(" ;", ";")
+    text = text.replace("  ", " ")
+    text = text.replace(" ?", "?")
+    text = re.sub(r'\b\w\.\b', '.', text)
+    words_to_remove = ['the', 'an', 'or', 'when']
+    pattern = r'\b(?:{})\b(?=\.)'.format('|'.join(words_to_remove))
+    text = re.sub(pattern, '', text, flags=re.IGNORECASE)
 
-# create the Window
+    return text
 
-window = sg.Window('Text generator', layout)
+# interfejs
+layout = [
+    [sg.Text("Choose an author"), sg.Combo(list(corpus_authors.values()), key="author")],
+    [sg.Text("Size of generated text"), sg.Spin([i for i in range(30, 301, 10)], initial_value=180, key="size")],
+    [sg.Text("Or provide your own corpus"), sg.InputText(key="corpus_file"), sg.FileBrowse()],
+    [sg.Text("Seed words"), sg.InputText(key="seed_words")],
+    [sg.Multiline(key="generated_text", size=(80, 20))],
+    [sg.Text("Filename"), sg.InputText(key="filename")],
+    [sg.Button("Generate"), sg.Button("Save"), sg.Button("Exit")]
+]
 
+window = sg.Window("Markov Text Generator").Layout(layout)
+
+# generowanie i zapis
 while True:
-    event, values = window.read()
-    print(values)
-    if event == sg.WIN_CLOSED or event == 'Cancel': # if user closes window or clicks cancel
+    event, values = window.Read()
+    if event in (None, "Exit"):
         break
-    elif event == 'Generate':
-        if values['-AUTHORS-'] in authors:
-            filename = authors[str(values['-AUTHORS-'])]
-        file = nltk.corpus.gutenberg.open(filename)
-        markov = Markov(file)
-        seed_words = values['-SEED-']
-        beginning_words = values['-SEED-']
-        generated_text = markov.generate_markov_text(seed_words=seed_words, beginning_words=beginning_words)
-        sg.popup_scrolled(generated_text, title='Generated Text')
-    
-window.close()
+    if event == "Generate":
+        author_name = values["author"]
+        author_file = next((file for file, author in corpus_authors.items() if author == author_name), None)
+        size = int(values["size"])
+        seed_words = values["seed_words"]
+        corpus_file = values["corpus_file"]
+
+        if corpus_file:
+            with open(corpus_file, "r", encoding = "latin1") as file:
+                words = file.read().split()
+        elif author_file:
+            words = gutenberg.words(author_file)
+        else:
+            continue
+
+        markov = Markov(words)
+        generated_text = markov.generate_markov_text(size, seed_words)
+        formatted_text = format_generated_text(generated_text)
+        window.Element("formatted_text").Update(formatted_text)
+
+    if event == "Save":
+        filename = values["filename"]
+        if formatted_text:
+            with open(filename, "w") as f:
+                f.write(formatted_text)
+            sg.Popup("File saved successfully!")
+        else:
+            sg.Popup("No generated text to save!")
+
+window.Close()
