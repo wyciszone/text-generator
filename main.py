@@ -25,7 +25,7 @@ class Markov(object):
         self.database()
 
     def tuples(self):
-        for i in range(len(self.words) - 3):
+        for i in range(len(self.words) - 4):
             yield (self.words[i], self.words[i+1], self.words[i+2], self.words[i+3])
 
     def database(self):
@@ -37,81 +37,118 @@ class Markov(object):
                 self.cache[key] = [w4]
 
     def generate_markov_text(self, size=100, seed_words=None):
+        gen_words = []
+
         if seed_words is None:
             seed = random.randint(0, self.word_size-4)
             seed_words = [self.words[seed], self.words[seed+1], self.words[seed+2], self.words[seed+3]]
-        gen_words = list(seed_words) if isinstance(seed_words, str) else seed_words.copy()
+        else:
+            seed_words = seed_words.split() if isinstance(seed_words, str) else seed_words.copy()
 
-        for i in range(size - 4):
-            w1, w2, w3, w4 = gen_words[-4:]
-            try:
-                next_word = random.choice(self.cache[(w1, w2, w3)])
-            except KeyError:
+        seed_length = len(seed_words)
+
+        if seed_length >= 4:
+            gen_words.extend(seed_words[-4:])
+        else:
+            gen_words.extend(seed_words)
+
+        for i in range(size - len(gen_words)):
+            if len(gen_words) < 3:  
                 next_word = random.choice(self.words)
+            else:
+                current_words = gen_words[-3:] 
+                try:
+                    next_word = random.choice(self.cache[tuple(current_words)])
+                except KeyError:
+                    next_word = random.choice(self.words)
             gen_words.append(next_word)
 
         return ' '.join(gen_words)
 
-def format_generated_text(text):
-    text = text.replace('"', '').replace("'", "")
-    text = text.replace(" .", ".")
-    text = text.replace(",,", ",")
-    text = text.replace(" ,", ",")
-    text = text.replace(" ;", ";")
-    text = text.replace("  ", " ")
-    text = text.replace(" ?", "?")
-    text = re.sub(r'\b\w\.\b', '.', text)
-    words_to_remove = ['the', 'an', 'or', 'when']
-    pattern = r'\b(?:{})\b(?=\.)'.format('|'.join(words_to_remove))
-    text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+class TextFormatter:
+    @staticmethod
+    def remove_repeating_words(text):
+        words = text.split()
+        filtered_words = [words[0]]
 
-    return text
+        for i in range(1, len(words)):
+            if words[i] != words[i-1] or "'" in words[i]:
+                filtered_words.append(words[i])
+
+        return ' '.join(filtered_words)
+
+    @staticmethod
+    def fix_interpunction(text):
+        text = re.sub(r'([?!])\1+', r'\1', text)
+        text = re.sub(r',+', r',', text)
+        text = re.sub(r'\.+', r'.', text)
+
+        return text
+
+    @staticmethod
+    def capitalize_sentences(text):
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        formatted_sentences = []
+
+        for sentence in sentences:
+            if sentence:
+                formatted_sentence = sentence[0].upper() + sentence[1:]
+                formatted_sentences.append(formatted_sentence)
+
+        return ' '.join(formatted_sentences)
+
+    @staticmethod
+    def fix_punctuation_spacing(text):
+        text = re.sub(r'\s+([.,;?!])', r'\1', text)
+        text = re.sub(r'([.,;?!])\s+', r'\1 ', text)
+
+        return text
 
 # interfejs
+
 layout = [
-    [sg.Text("Choose an author"), sg.Combo(list(corpus_authors.values()), key="author")],
-    [sg.Text("Size of generated text"), sg.Spin([i for i in range(30, 301, 10)], initial_value=180, key="size")],
-    [sg.Text("Or provide your own corpus"), sg.InputText(key="corpus_file"), sg.FileBrowse()],
-    [sg.Text("Seed words"), sg.InputText(key="seed_words")],
-    [sg.Multiline(key="generated_text", size=(80, 20))],
-    [sg.Text("Filename"), sg.InputText(key="filename")],
-    [sg.Button("Generate"), sg.Button("Save"), sg.Button("Exit")]
+    [sg.Text('Select Corpus:', size=(15, 1)), sg.Combo(list(corpus_authors.values()), size=(30, 1), key='corpus_choice')],
+    [sg.Text('Seed Words:', size=(15, 1)), sg.Input(size=(50, 1), key='seed_words')],
+    [sg.Text('Custom Corpus:', size=(15, 1)), sg.Input(size=(30, 1), key='custom_corpus_file'), sg.FileBrowse()],
+    [sg.Text('Generated Text:', size=(15, 1)), sg.Multiline(size=(70, 10), key='generated_text')],
+    [sg.Button('Generate Text', size=(15, 1)), sg.Button('Save File', size=(15, 1)), sg.Button('Exit', size=(15, 1))]
 ]
 
-window = sg.Window("Markov Text Generator").Layout(layout)
+# Create the window
+window = sg.Window('Text Generator', layout)
 
-# generowanie i zapis
+# Main event loop
 while True:
-    event, values = window.Read()
-    if event in (None, "Exit"):
+    event, values = window.read()
+
+    # Check if the window was closed
+    if event == sg.WINDOW_CLOSED:
         break
-    if event == "Generate":
-        author_name = values["author"]
-        author_file = next((file for file, author in corpus_authors.items() if author == author_name), None)
-        size = int(values["size"])
-        seed_words = values["seed_words"]
-        corpus_file = values["corpus_file"]
 
-        if corpus_file:
-            with open(corpus_file, "r", encoding = "latin1") as file:
-                words = file.read().split()
-        elif author_file:
-            words = gutenberg.words(author_file)
+    if event == 'Generate Text':
+        corpus_choice = values['corpus_choice']
+        seed_words = values['seed_words']
+        corpus_file = [file for file, author in corpus_authors.items() if author == corpus_choice][0]
+        if corpus_file == 'Custom Corpus':
+            custom_corpus_file = values['custom_corpus_file']
+            corpus = nltk.corpus.PlaintextCorpusReader('', custom_corpus_file).words()
         else:
-            continue
+            corpus = nltk.corpus.gutenberg.words(corpus_file)
 
-        markov = Markov(words)
-        generated_text = markov.generate_markov_text(size, seed_words)
-        formatted_text = format_generated_text(generated_text)
-        window.Element("formatted_text").Update(formatted_text)
+        markov = Markov(corpus)
+        generated_text = markov.generate_markov_text(size=50, seed_words=seed_words)
+        formatted_text = TextFormatter.remove_repeating_words(generated_text)
+        formatted_text = TextFormatter.fix_interpunction(formatted_text)
+        formatted_text = TextFormatter.capitalize_sentences(formatted_text)
+        formatted_text = TextFormatter.fix_punctuation_spacing(formatted_text)
+        window['generated_text'].update(formatted_text)
 
-    if event == "Save":
-        filename = values["filename"]
-        if formatted_text:
-            with open(filename, "w") as f:
-                f.write(formatted_text)
-            sg.Popup("File saved successfully!")
-        else:
-            sg.Popup("No generated text to save!")
+    if event == 'Save File':
+        save_file = sg.popup_get_file('Save File', save_as=True, default_extension=".txt", file_types=(("Text Files", "*.txt"),))
+        if save_file:
+            with open(save_file, 'w') as file:
+                file.write(formatted_text)
+    if event == 'Exit':
+        break
 
-window.Close()
+window.close()
