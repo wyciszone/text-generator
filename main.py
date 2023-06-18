@@ -65,7 +65,12 @@ class Markov(object):
 
         return ' '.join(gen_words)
 
-class TextFormatter:
+    def convert_uppercase_to_lowercase(self):
+        words_lower = [w.lower() if w.isupper() else w for w in self.words]
+        return Markov(words_lower)
+
+
+class TextFormatter(object):
     @staticmethod
     def remove_repeating_words(text):
         words = text.split()
@@ -104,30 +109,35 @@ class TextFormatter:
 
         return text
 
-# interfejs
+    def format_text(self, text):
+        formatted_text = self.remove_repeating_words(text)
+        formatted_text = self.fix_interpunction(formatted_text)
+        formatted_text = self.capitalize_sentences(formatted_text)
+        formatted_text = self.fix_punctuation_spacing(formatted_text)
+        return formatted_text
 
 layout = [
     [sg.Text('Select Corpus:', size=(15, 1)), sg.Combo(list(corpus_authors.values()), size=(30, 1), key='corpus_choice')],
     [sg.Text('Seed Words:', size=(15, 1)), sg.Input(size=(50, 1), key='seed_words')],
+    [sg.Text('Generated Text Size:', size=(15, 1)), sg.Input(size=(10, 1), key='text_size')],
     [sg.Text('Custom Corpus:', size=(15, 1)), sg.Input(size=(30, 1), key='custom_corpus_file'), sg.FileBrowse()],
     [sg.Text('Generated Text:', size=(15, 1)), sg.Multiline(size=(70, 10), key='generated_text')],
     [sg.Button('Generate Text', size=(15, 1)), sg.Button('Save File', size=(15, 1)), sg.Button('Exit', size=(15, 1))]
 ]
 
-# Create the window
 window = sg.Window('Text Generator', layout)
 
-# Main event loop
 while True:
     event, values = window.read()
 
-    # Check if the window was closed
     if event == sg.WINDOW_CLOSED:
         break
 
     if event == 'Generate Text':
         corpus_choice = values['corpus_choice']
         seed_words = values['seed_words']
+        text_size = int(values['text_size'])
+
         corpus_file = [file for file, author in corpus_authors.items() if author == corpus_choice][0]
         if corpus_file == 'Custom Corpus':
             custom_corpus_file = values['custom_corpus_file']
@@ -136,18 +146,18 @@ while True:
             corpus = nltk.corpus.gutenberg.words(corpus_file)
 
         markov = Markov(corpus)
-        generated_text = markov.generate_markov_text(size=50, seed_words=seed_words)
-        formatted_text = TextFormatter.remove_repeating_words(generated_text)
-        formatted_text = TextFormatter.fix_interpunction(formatted_text)
-        formatted_text = TextFormatter.capitalize_sentences(formatted_text)
-        formatted_text = TextFormatter.fix_punctuation_spacing(formatted_text)
+        generated_text = markov.convert_uppercase_to_lowercase().generate_markov_text(size=text_size, seed_words=seed_words)
+
+        formatter = TextFormatter()
+        formatted_text = formatter.format_text(generated_text)
         window['generated_text'].update(formatted_text)
 
     if event == 'Save File':
         save_file = sg.popup_get_file('Save File', save_as=True, default_extension=".txt", file_types=(("Text Files", "*.txt"),))
         if save_file:
             with open(save_file, 'w') as file:
-                file.write(formatted_text)
+                file.write(window['generated_text'].get())
+
     if event == 'Exit':
         break
 
