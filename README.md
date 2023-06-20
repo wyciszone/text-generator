@@ -4,4 +4,6 @@ having a possibility to interact with users graphically even in my first project
 
 I've used some tutorials on the Internet and nltk book a lot
 
+you need to install the nltk library and download the gutenberg library 
+
 hope you like it :]
